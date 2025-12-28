@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 import 'sign_in_page.dart';
+import 'facebook_friends_page.dart';
+import 'facebook_watch_page.dart';
 
 class FacebookHomePage extends StatefulWidget {
   const FacebookHomePage({super.key});
@@ -241,7 +243,29 @@ class _FacebookHomePageState extends State<FacebookHomePage> {
           selectedItemColor: const Color(0xFF1877F2),
           unselectedItemColor: const Color(0xFF65676B),
           currentIndex: 0,
-          onTap: (index) {},
+          onTap: (index) {
+            switch (index) {
+              case 0:
+                // Already on Home
+                break;
+              case 1:
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => const FacebookFriendsPage(),
+                  ),
+                );
+                break;
+              case 2:
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const FacebookWatchPage()),
+                );
+                break;
+              default:
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Page coming soon')),
+                );
+            }
+          },
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Friends'),
