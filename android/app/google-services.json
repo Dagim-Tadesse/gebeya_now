@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "530922119140",
+    "project_id": "gebeye-now",
+    "storage_bucket": "gebeye-now.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:530922119140:android:ce83a366014aef1d55f1f1",
+        "android_client_info": {
+          "package_name": "com.example.gebeya_now"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "530922119140-qf2c5m9p8vs3t5l5ivd88iahp1vgdbgq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.gebeya_now",
+            "certificate_hash": "68a121853e7d1f2a09fad4326951e0e8024f08f7"
+          }
+        },
+        {
+          "client_id": "530922119140-8714pai16s9nhom3u0uddgjetffar1b7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1qEa32idTxZNXV4cM9Znlwc8qnYtu48I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "530922119140-8714pai16s9nhom3u0uddgjetffar1b7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
