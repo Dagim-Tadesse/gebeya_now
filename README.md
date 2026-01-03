@@ -1,4 +1,14 @@
-﻿# Gebeya Now — Local Service Marketplace (Course Project)
+﻿﻿# Gebeya Now — Local Service Marketplace (Course Project)
+
+## About this repository
+
+This project is part of a Flutter Mobile Programming course workspace.
+
+**Author**
+
+- Name: Dagim Tadesse
+- University: Addis Ababa Science and Technology University
+- Department: Software Engineering
 
 `gebeya_now` is a Flutter app built during the course to practice building a **realistic marketplace-style mobile app** with:
 
