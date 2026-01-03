@@ -34,6 +34,42 @@ class WorkingHoursSection extends StatelessWidget {
     'Sunday',
   ];
 
+  Widget _timePickerChip({
+    required BuildContext context,
+    required ThemeData theme,
+    required String timeText,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outline),
+          borderRadius: BorderRadius.circular(1.w),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                timeText,
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(width: 1.w),
+            CustomIconWidget(
+              iconName: 'access_time',
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -69,7 +105,7 @@ class WorkingHoursSection extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      flex: 2,
+                      flex: 3,
                       child: Row(
                         children: [
                           Switch(
@@ -77,101 +113,69 @@ class WorkingHoursSection extends StatelessWidget {
                             onChanged: (value) => onDayToggle(day, value),
                           ),
                           SizedBox(width: 2.w),
-                          Text(
-                            day,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w500,
-                              color: isWorking
-                                  ? theme.colorScheme.onSurface
-                                  : theme.colorScheme.onSurfaceVariant,
+                          Expanded(
+                            child: Text(
+                              day,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                color: isWorking
+                                    ? theme.colorScheme.onSurface
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    if (isWorking) ...[
+                    if (isWorking)
                       Expanded(
-                        child: GestureDetector(
-                          onTap: () async {
-                            final time = await showTimePicker(
-                              context: context,
-                              initialTime: startTime,
-                            );
-                            if (time != null) {
-                              onStartTimeChanged(day, time);
-                            }
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 3.w,
-                              vertical: 1.h,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: theme.colorScheme.outline,
+                        flex: 4,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _timePickerChip(
+                                context: context,
+                                theme: theme,
+                                timeText: startTime.format(context),
+                                onTap: () async {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: startTime,
+                                  );
+                                  if (time != null) {
+                                    onStartTimeChanged(day, time);
+                                  }
+                                },
                               ),
-                              borderRadius: BorderRadius.circular(1.w),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  startTime.format(context),
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                                CustomIconWidget(
-                                  iconName: 'access_time',
-                                  size: 4.w,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ],
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 1.w),
+                              child: Text(
+                                'to',
+                                style: theme.textTheme.bodySmall,
+                              ),
                             ),
-                          ),
+                            Expanded(
+                              child: _timePickerChip(
+                                context: context,
+                                theme: theme,
+                                timeText: endTime.format(context),
+                                onTap: () async {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: endTime,
+                                  );
+                                  if (time != null) {
+                                    onEndTimeChanged(day, time);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(width: 2.w),
-                      Text('to', style: theme.textTheme.bodySmall),
-                      SizedBox(width: 2.w),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () async {
-                            final time = await showTimePicker(
-                              context: context,
-                              initialTime: endTime,
-                            );
-                            if (time != null) {
-                              onEndTimeChanged(day, time);
-                            }
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 3.w,
-                              vertical: 1.h,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: theme.colorScheme.outline,
-                              ),
-                              borderRadius: BorderRadius.circular(1.w),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  endTime.format(context),
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                                CustomIconWidget(
-                                  iconName: 'access_time',
-                                  size: 4.w,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 if (day != daysOfWeek.last) SizedBox(height: 1.5.h),

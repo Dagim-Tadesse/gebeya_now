@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
@@ -19,157 +23,310 @@ class ProviderListScreen extends StatefulWidget {
 class _ProviderListScreenState extends State<ProviderListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+  _providerSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+  _favoritesSubscription;
+  StreamSubscription<User?>? _authSubscription;
+
+  bool _didInitTabFromRouteArgs = false;
+
+  String? _providersLoadError;
 
   int _currentBottomNavIndex = 1; // Search tab active
   // ignore: unused_field
   bool _isRefreshing = false;
-  String _selectedCategory = "Plumbing";
+  String _categoryFilter = 'All';
   int _activeFilterCount = 0;
   String _currentSortOption = "Distance";
+  final bool _debugBypassFilters = false;
+
+  List<Map<String, dynamic>> _providers = [];
+  List<Map<String, dynamic>> _filteredProviders = [];
+  final Set<String> _favoriteProviderIds = {};
 
   // Filter state
-  double _locationRadius = 5.0;
+  double _locationRadius = 20.0; // Keep within filter slider range
   String _availabilityFilter = "All";
   double _ratingThreshold = 0.0;
   RangeValues _priceRange = const RangeValues(0, 1000);
 
-  // Mock provider data with Ethiopian context
-  final List<Map<String, dynamic>> _allProviders = [
-    {
-      "id": "1",
-      "name": "Abebe Kebede",
-      "avatar":
-          "https://img.rocket.new/generatedImages/rocket_gen_img_1743d8131-1763301116185.png",
-      "semanticLabel":
-          "Professional headshot of Ethiopian man with short black hair wearing blue work shirt",
-      "specialization": "Emergency Plumbing",
-      "rating": 4.8,
-      "reviewCount": 127,
-      "location": "Bole, Addis Ababa",
-      "distance": 1.2,
-      "availability": "Available",
-      "phone": "+251911234567",
-      "isFeatured": true,
-      "isEmergency": true,
-      "price": 250,
-      "joinedDate": DateTime(2024, 3, 15),
-    },
-    {
-      "id": "2",
-      "name": "Tigist Haile",
-      "avatar":
-          "https://img.rocket.new/generatedImages/rocket_gen_img_1b0d0b9cd-1763296099864.png",
-      "semanticLabel":
-          "Professional photo of Ethiopian woman with braided hair wearing yellow work uniform",
-      "specialization": "Residential Plumbing",
-      "rating": 4.6,
-      "reviewCount": 89,
-      "location": "Megenagna, Addis Ababa",
-      "distance": 2.5,
-      "availability": "Available",
-      "phone": "+251922345678",
-      "isFeatured": false,
-      "isEmergency": false,
-      "price": 180,
-      "joinedDate": DateTime(2024, 6, 20),
-    },
-    {
-      "id": "3",
-      "name": "Dawit Tesfaye",
-      "avatar":
-          "https://img.rocket.new/generatedImages/rocket_gen_img_1a0942522-1763292717812.png",
-      "semanticLabel":
-          "Portrait of Ethiopian man with mustache wearing red plumber work shirt",
-      "specialization": "Commercial Plumbing",
-      "rating": 4.9,
-      "reviewCount": 203,
-      "location": "Piassa, Addis Ababa",
-      "distance": 3.8,
-      "availability": "Busy",
-      "phone": "+251933456789",
-      "isFeatured": true,
-      "isEmergency": false,
-      "price": 320,
-      "joinedDate": DateTime(2023, 11, 10),
-    },
-    {
-      "id": "4",
-      "name": "Meron Alemayehu",
-      "avatar": "https://images.unsplash.com/photo-1634141505621-3e8ea76182d2",
-      "semanticLabel":
-          "Photo of young Ethiopian woman with curly hair wearing green work vest",
-      "specialization": "Pipe Installation",
-      "rating": 4.5,
-      "reviewCount": 64,
-      "location": "Kazanchis, Addis Ababa",
-      "distance": 4.2,
-      "availability": "Available",
-      "phone": "+251944567890",
-      "isFeatured": false,
-      "isEmergency": false,
-      "price": 200,
-      "joinedDate": DateTime(2025, 1, 5),
-    },
-    {
-      "id": "5",
-      "name": "Solomon Girma",
-      "avatar":
-          "https://img.rocket.new/generatedImages/rocket_gen_img_153951ed6-1763294769986.png",
-      "semanticLabel":
-          "Professional photo of Ethiopian man with glasses wearing blue work uniform",
-      "specialization": "Drain Cleaning",
-      "rating": 4.7,
-      "reviewCount": 145,
-      "location": "Gerji, Addis Ababa",
-      "distance": 5.1,
-      "availability": "Offline",
-      "phone": "+251955678901",
-      "isFeatured": false,
-      "isEmergency": true,
-      "price": 150,
-      "joinedDate": DateTime(2024, 8, 12),
-    },
-  ];
+  List<String> get _availableCategories {
+    final categories =
+        _providers
+            .map((p) => (p['category'] as String?)?.trim() ?? '')
+            .where((c) => c.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
 
-  List<Map<String, dynamic>> _filteredProviders = [];
-  Set<String> _favoriteProviderIds = {};
+    if (categories.isEmpty) return const ['All'];
+    if (categories.any((c) => c.toLowerCase() == 'all')) {
+      categories.removeWhere((c) => c.toLowerCase() == 'all');
+    }
+
+    return ['All', ...categories];
+  }
 
   @override
   void initState() {
     super.initState();
-    _filteredProviders = List.from(_allProviders);
-    _applySort();
+    _listenToProviders();
+
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _favoritesSubscription?.cancel();
+      _favoritesSubscription = null;
+      if (!mounted) return;
+      setState(() {
+        _favoriteProviderIds.clear();
+      });
+      if (user != null) {
+        _listenToFavorites(user.uid);
+      }
+    });
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) _listenToFavorites(user.uid);
+    _updateFilterCount();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Allow bottom-nav taps (Favorites vs Search) to open this screen in a
+    // specific tab via Navigator arguments.
+    if (_didInitTabFromRouteArgs) return;
+    _didInitTabFromRouteArgs = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    int? initialTabIndex;
+    String? initialCategory;
+    if (args is Map) {
+      final v = args['initialTabIndex'];
+      if (v is int) initialTabIndex = v;
+
+      final c = args['initialCategory'] ?? args['categoryName'];
+      if (c is String) initialCategory = c;
+    } else if (args is int) {
+      initialTabIndex = args;
+    }
+
+    final trimmedInitialCategory = initialCategory?.trim();
+    if ((initialTabIndex != null && initialTabIndex >= 0) ||
+        (trimmedInitialCategory != null && trimmedInitialCategory.isNotEmpty)) {
+      setState(() {
+        final idx = initialTabIndex;
+        if (idx != null && idx >= 0) {
+          _currentBottomNavIndex = idx;
+        }
+
+        final cat = trimmedInitialCategory;
+        if (cat != null && cat.isNotEmpty) {
+          _categoryFilter = cat;
+        }
+      });
+      _applyFilters();
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
+    _providerSubscription?.cancel();
+    _favoritesSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
+  }
+
+  void _listenToFavorites(String uid) {
+    _favoritesSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('favorites')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final ids = snapshot.docs.map((d) => d.id).toSet();
+            setState(() {
+              _favoriteProviderIds
+                ..clear()
+                ..addAll(ids);
+            });
+          },
+          onError: (error, stack) {
+            // ignore: avoid_print
+            print('favorites snapshot error: $error');
+          },
+        );
+  }
+
+  void _listenToProviders() {
+    _providerSubscription = FirebaseFirestore.instance
+        .collection('providers')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final fetched = snapshot.docs
+                .map((doc) {
+                  try {
+                    final raw = {...doc.data()};
+                    return _normalizeProviderData(raw, doc.id);
+                  } catch (e) {
+                    // ignore: avoid_print
+                    print('Failed to normalize provider ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .whereType<Map<String, dynamic>>()
+                .toList();
+
+            // Debug: log incoming doc count
+            // ignore: avoid_print
+            print('providers snapshot docs: ${fetched.length}');
+
+            setState(() {
+              _providers = fetched;
+              _providersLoadError = null;
+            });
+            _applyFilters();
+          },
+          onError: (error, stack) {
+            // If Firestore errors (offline or permission), show the error.
+            // ignore: avoid_print
+            print('providers snapshot error: $error');
+            setState(() {
+              _providers = [];
+              _providersLoadError = error.toString();
+            });
+            _applyFilters();
+          },
+        );
+  }
+
+  Map<String, dynamic> _normalizeProviderData(
+    Map<String, dynamic> data,
+    String id,
+  ) {
+    final joined = data['joinedDate'];
+    final joinedDate = _extractDateTime(joined);
+
+    String asString(dynamic value) {
+      if (value == null) return '';
+      if (value is String) return value;
+      // Common Firestore pattern: {"url": "..."}
+      if (value is Map && value['url'] is String) return value['url'] as String;
+      return value.toString();
+    }
+
+    String normalizeString(dynamic value, {required String fallback}) {
+      final s = asString(value).trim();
+      return s.isEmpty ? fallback : s;
+    }
+
+    String normalizeLocation(dynamic value) {
+      if (value == null) return 'Location not specified';
+      if (value is String) {
+        final s = value.trim();
+        return s.isEmpty ? 'Location not specified' : s;
+      }
+      if (value is Map) {
+        final parts = <String>[];
+        for (final key in const [
+          'name',
+          'address',
+          'city',
+          'region',
+          'subCity',
+        ]) {
+          final v = value[key];
+          if (v is String && v.trim().isNotEmpty) parts.add(v.trim());
+        }
+        if (parts.isNotEmpty) return parts.join(', ');
+      }
+      final s = value.toString().trim();
+      return s.isEmpty ? 'Location not specified' : s;
+    }
+
+    return {
+      ...data,
+      'id': id,
+      'joinedDate': joinedDate,
+      'isFeatured': (data['isFeatured'] as bool?) ?? false,
+      'isEmergency': (data['isEmergency'] as bool?) ?? false,
+      'availability': normalizeString(
+        data['availability'],
+        fallback: 'Offline',
+      ),
+      'distance': (data['distance'] as num?)?.toDouble() ?? 0.0,
+      'rating': (data['rating'] as num?)?.toDouble() ?? 0.0,
+      'price': (data['price'] as num?)?.toInt() ?? 0,
+      'reviewCount': (data['reviewCount'] as num?)?.toInt() ?? 0,
+      'name': normalizeString(data['name'], fallback: 'Unknown Provider'),
+      'category': normalizeString(data['category'], fallback: 'General'),
+      'specialization': normalizeString(
+        data['specialization'],
+        fallback: 'General Services',
+      ),
+      'location': normalizeLocation(data['location']),
+      'avatar': asString(data['avatar']),
+    };
+  }
+
+  DateTime _extractDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String && value.isNotEmpty) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   void _applyFilters() {
     setState(() {
-      _filteredProviders = _allProviders.where((provider) {
+      if (_debugBypassFilters) {
+        _filteredProviders = List<Map<String, dynamic>>.from(_providers);
+        _applySort();
+        _updateFilterCount();
+        return;
+      }
+
+      _filteredProviders = _providers.where((provider) {
+        // Category filter
+        final selectedCategory = _categoryFilter.trim();
+        if (selectedCategory.isNotEmpty && selectedCategory != 'All') {
+          final providerCategory =
+              (provider['category'] as String?)?.trim() ?? '';
+          if (providerCategory.toLowerCase() !=
+              selectedCategory.toLowerCase()) {
+            return false;
+          }
+        }
+
         // Distance filter
-        if ((provider["distance"] as double) > _locationRadius) return false;
+        final distance = (provider["distance"] as num?)?.toDouble() ?? 0;
+        if (distance > _locationRadius) return false;
 
         // Availability filter
         if (_availabilityFilter != "All" &&
-            provider["availability"] != _availabilityFilter)
+            provider["availability"] != _availabilityFilter) {
           return false;
+        }
 
         // Rating filter
-        if ((provider["rating"] as double) < _ratingThreshold) return false;
+        final rating = (provider["rating"] as num?)?.toDouble() ?? 0;
+        if (rating < _ratingThreshold) return false;
 
         // Price filter
-        final price = provider["price"] as int;
+        final price = (provider["price"] as num?)?.toInt() ?? 0;
         if (price < _priceRange.start || price > _priceRange.end) return false;
 
         // Search filter
         if (_searchController.text.isNotEmpty) {
           final searchLower = _searchController.text.toLowerCase();
-          final nameLower = (provider["name"] as String).toLowerCase();
+          final nameLower = (provider["name"] as String? ?? '').toLowerCase();
           if (!nameLower.contains(searchLower)) return false;
         }
 
@@ -186,13 +343,16 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
       switch (_currentSortOption) {
         case "Distance":
           _filteredProviders.sort(
-            (a, b) =>
-                (a["distance"] as double).compareTo(b["distance"] as double),
+            (a, b) => ((a["distance"] as num?)?.toDouble() ?? 0).compareTo(
+              (b["distance"] as num?)?.toDouble() ?? 0,
+            ),
           );
           break;
         case "Rating":
           _filteredProviders.sort(
-            (a, b) => (b["rating"] as double).compareTo(a["rating"] as double),
+            (a, b) => ((b["rating"] as num?)?.toDouble() ?? 0).compareTo(
+              (a["rating"] as num?)?.toDouble() ?? 0,
+            ),
           );
           break;
         case "Availability":
@@ -204,25 +364,28 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
           });
           break;
         case "Recently Joined":
-          _filteredProviders.sort(
-            (a, b) => (b["joinedDate"] as DateTime).compareTo(
-              a["joinedDate"] as DateTime,
-            ),
-          );
+          _filteredProviders.sort((a, b) {
+            final joinedA = _extractDateTime(a["joinedDate"]);
+            final joinedB = _extractDateTime(b["joinedDate"]);
+            return joinedB.compareTo(joinedA);
+          });
           break;
       }
 
       // Featured providers always on top
       _filteredProviders.sort((a, b) {
-        if (a["isFeatured"] == b["isFeatured"]) return 0;
-        return (a["isFeatured"] as bool) ? -1 : 1;
+        final aFeatured = (a["isFeatured"] as bool?) ?? false;
+        final bFeatured = (b["isFeatured"] as bool?) ?? false;
+        if (aFeatured == bFeatured) return 0;
+        return aFeatured ? -1 : 1;
       });
     });
   }
 
   void _updateFilterCount() {
     int count = 0;
-    if (_locationRadius < 10.0) count++;
+    if (_categoryFilter.trim() != 'All') count++;
+    if (_locationRadius < 20.0) count++;
     if (_availabilityFilter != "All") count++;
     if (_ratingThreshold > 0.0) count++;
     if (_priceRange.start > 0 || _priceRange.end < 1000) count++;
@@ -235,14 +398,46 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
     setState(() => _isRefreshing = false);
   }
 
-  void _toggleFavorite(String providerId) {
+  Future<void> _toggleFavorite(String providerId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final favoritesRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('favorites')
+        .doc(providerId);
+
+    final wasFavorite = _favoriteProviderIds.contains(providerId);
+
+    // Optimistic UI update.
     setState(() {
-      if (_favoriteProviderIds.contains(providerId)) {
+      if (wasFavorite) {
         _favoriteProviderIds.remove(providerId);
       } else {
         _favoriteProviderIds.add(providerId);
       }
     });
+
+    try {
+      if (wasFavorite) {
+        await favoritesRef.delete();
+      } else {
+        await favoritesRef.set({'createdAt': FieldValue.serverTimestamp()});
+      }
+    } catch (e) {
+      // Revert UI if write fails.
+      // ignore: avoid_print
+      print('Failed to toggle favorite for $providerId: $e');
+      if (!mounted) return;
+      setState(() {
+        if (wasFavorite) {
+          _favoriteProviderIds.add(providerId);
+        } else {
+          _favoriteProviderIds.remove(providerId);
+        }
+      });
+    }
   }
 
   void _showFilterSheet() {
@@ -251,12 +446,15 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => FilterBottomSheetWidget(
+        categories: _availableCategories,
+        categoryFilter: _categoryFilter,
         locationRadius: _locationRadius,
         availabilityFilter: _availabilityFilter,
         ratingThreshold: _ratingThreshold,
         priceRange: _priceRange,
-        onApply: (radius, availability, rating, price) {
+        onApply: (category, radius, availability, rating, price) {
           setState(() {
+            _categoryFilter = category;
             _locationRadius = radius;
             _availabilityFilter = availability;
             _ratingThreshold = rating;
@@ -267,7 +465,8 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
         },
         onReset: () {
           setState(() {
-            _locationRadius = 10.0;
+            _categoryFilter = 'All';
+            _locationRadius = 20.0;
             _availabilityFilter = "All";
             _ratingThreshold = 0.0;
             _priceRange = const RangeValues(0, 1000);
@@ -356,7 +555,7 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
                     style: theme.textTheme.bodyLarge,
                   ),
                   onTap: () {
-                    _toggleFavorite(provider["id"] as String);
+                    unawaited(_toggleFavorite(provider["id"] as String));
                     Navigator.pop(context);
                   },
                 ),
@@ -395,10 +594,74 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // Check if user is authenticated
+    if (FirebaseAuth.instance.currentUser == null) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(title: const Text('Providers')),
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8.w),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CustomIconWidget(
+                  iconName: 'login',
+                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 80,
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  'Authentication Required',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 1.h),
+                Text(
+                  'Please log in to view available providers',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 4.h),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/authentication-screen');
+                  },
+                  icon: CustomIconWidget(
+                    iconName: 'login',
+                    color: theme.colorScheme.onPrimary,
+                    size: 20,
+                  ),
+                  label: const Text('Go to Login'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: CustomBottomBar(
+          currentIndex: _currentBottomNavIndex,
+          onTap: (index) {
+            setState(() => _currentBottomNavIndex = index);
+          },
+        ),
+      );
+    }
+
+    // Compute displayed providers based on current tab
+    final displayedProviders = _currentBottomNavIndex == 2
+        ? _filteredProviders
+              .where((p) => _favoriteProviderIds.contains(p['id']))
+              .toList()
+        : _filteredProviders;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: CustomAppBarWithFilter(
-        title: _selectedCategory,
+        title: _currentBottomNavIndex == 2 ? 'Favorites' : 'Search',
         onFilterTap: _showFilterSheet,
         activeFilterCount: _activeFilterCount > 0 ? _activeFilterCount : null,
         additionalActions: [
@@ -465,8 +728,10 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
 
           // Provider list
           Expanded(
-            child: _filteredProviders.isEmpty
-                ? _buildEmptyState(theme)
+            child: displayedProviders.isEmpty
+                ? (_providersLoadError != null
+                      ? _buildLoadErrorState(theme, _providersLoadError!)
+                      : _buildEmptyState(theme, _currentBottomNavIndex == 2))
                 : RefreshIndicator(
                     onRefresh: _handleRefresh,
                     color: theme.colorScheme.primary,
@@ -476,11 +741,11 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
                         horizontal: 4.w,
                         vertical: 2.h,
                       ),
-                      itemCount: _filteredProviders.length,
+                      itemCount: displayedProviders.length,
                       separatorBuilder: (context, index) =>
                           SizedBox(height: 2.h),
                       itemBuilder: (context, index) {
-                        final provider = _filteredProviders[index];
+                        final provider = displayedProviders[index];
                         return ProviderCardWidget(
                           provider: provider,
                           isFavorite: _favoriteProviderIds.contains(
@@ -496,8 +761,9 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
                           onCallTap: () {
                             // Phone dialer integration
                           },
-                          onFavoriteTap: () =>
-                              _toggleFavorite(provider["id"] as String),
+                          onFavoriteTap: () => unawaited(
+                            _toggleFavorite(provider["id"] as String),
+                          ),
                           onLongPress: () => _showProviderContextMenu(provider),
                         );
                       },
@@ -515,7 +781,7 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
+  Widget _buildEmptyState(ThemeData theme, bool isFavoritesTab) {
     return Center(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 8.w),
@@ -523,13 +789,15 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CustomIconWidget(
-              iconName: 'search_off',
+              iconName: isFavoritesTab ? 'favorite_border' : 'search_off',
               color: theme.colorScheme.onSurfaceVariant,
               size: 80,
             ),
             SizedBox(height: 3.h),
             Text(
-              'No providers found',
+              isFavoritesTab
+                  ? 'No favorite providers yet'
+                  : 'No providers found',
               style: theme.textTheme.headlineSmall?.copyWith(
                 color: theme.colorScheme.onSurface,
               ),
@@ -537,7 +805,9 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
             ),
             SizedBox(height: 1.h),
             Text(
-              'Try expanding your search radius or adjusting filters',
+              isFavoritesTab
+                  ? 'Add providers to favorites to see them here'
+                  : 'Try expanding your search radius or adjusting filters',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -545,22 +815,26 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
             ),
             SizedBox(height: 4.h),
             ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _locationRadius = 10.0;
-                  _availabilityFilter = "All";
-                  _ratingThreshold = 0.0;
-                  _priceRange = const RangeValues(0, 1000);
-                  _searchController.clear();
-                });
-                _applyFilters();
-              },
+              onPressed: isFavoritesTab
+                  ? () => setState(() => _currentBottomNavIndex = 1)
+                  : () {
+                      setState(() {
+                        _locationRadius = 10.0;
+                        _availabilityFilter = "All";
+                        _ratingThreshold = 0.0;
+                        _priceRange = const RangeValues(0, 1000);
+                        _searchController.clear();
+                      });
+                      _applyFilters();
+                    },
               icon: CustomIconWidget(
-                iconName: 'refresh',
+                iconName: isFavoritesTab ? 'search' : 'refresh',
                 color: theme.colorScheme.onPrimary,
                 size: 20,
               ),
-              label: const Text('Reset Filters'),
+              label: Text(
+                isFavoritesTab ? 'Browse Providers' : 'Reset Filters',
+              ),
             ),
             SizedBox(height: 2.h),
             OutlinedButton.icon(
@@ -573,6 +847,53 @@ class _ProviderListScreenState extends State<ProviderListScreen> {
                 size: 20,
               ),
               label: const Text('Invite Provider'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadErrorState(ThemeData theme, String message) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'report',
+              color: theme.colorScheme.error,
+              size: 80,
+            ),
+            SizedBox(height: 3.h),
+            Text(
+              'Failed to load providers',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: theme.colorScheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 4.h),
+            ElevatedButton.icon(
+              onPressed: () {
+                _providerSubscription?.cancel();
+                _listenToProviders();
+              },
+              icon: CustomIconWidget(
+                iconName: 'refresh',
+                color: theme.colorScheme.onPrimary,
+                size: 20,
+              ),
+              label: const Text('Retry'),
             ),
           ],
         ),

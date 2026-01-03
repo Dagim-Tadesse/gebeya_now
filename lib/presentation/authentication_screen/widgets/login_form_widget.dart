@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,30 +85,88 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
       return;
     }
 
-    if (_usePhoneNumber) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Phone login is not enabled yet. Please use email or social login.',
-          ),
-        ),
-      );
-      return;
-    }
-
     widget.onLoadingChanged(true);
 
     try {
-      final email = _phoneController.text.trim();
       final password = _passwordController.text;
+      String email = _phoneController.text.trim();
+      String? lookupPhone;
+
+      if (_usePhoneNumber) {
+        final cleanPhone = _phoneController.text.replaceAll(' ', '').trim();
+        final variants = <String>{
+          '+251$cleanPhone',
+          '0$cleanPhone',
+          cleanPhone,
+          '251$cleanPhone',
+        }..removeWhere((v) => v.isEmpty);
+
+        lookupPhone = '+251$cleanPhone';
+
+        final match = await FirebaseFirestore.instance
+            .collection('users')
+            .where('phone', whereIn: variants.toList())
+            .limit(1)
+            .get();
+
+        if (!mounted) return;
+
+        if (match.docs.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'No account found for this phone. Please register or use email.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        email = (match.docs.first.data()['email'] as String?)?.trim() ?? '';
+        if (email.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This phone is linked to an account without email. Use email login.',
+              ),
+            ),
+          );
+          return;
+        }
+      }
 
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      final user = FirebaseAuth.instance.currentUser;
+      var isProvider = false;
+
+      if (user != null) {
+        final docRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid);
+        final snapshot = await docRef.get();
+        final existing = snapshot.data() ?? {};
+        final role = (existing['role'] as String?) ?? 'customer';
+
+        await docRef.set({
+          'name': user.displayName ?? existing['name'] ?? '',
+          'email': user.email ?? existing['email'] ?? email,
+          'photoUrl': user.photoURL ?? existing['photoUrl'],
+          'phone': existing['phone'] ?? user.phoneNumber ?? lookupPhone,
+          'serviceCategory': existing['serviceCategory'],
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (!snapshot.exists || !existing.containsKey('createdAt'))
+            'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        isProvider = role == 'provider';
+      }
+
       HapticFeedback.mediumImpact();
-      widget.onLoginSuccess(false);
+      widget.onLoginSuccess(isProvider);
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -129,6 +188,81 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
     } finally {
       if (mounted) {
         widget.onLoadingChanged(false);
+      }
+    }
+  }
+
+  Future<void> _handleForgotPassword() async {
+    final validationError = _validatePhone(_phoneController.text);
+    if (validationError != null) {
+      setState(() => _phoneError = validationError);
+      return;
+    }
+
+    String email = _phoneController.text.trim();
+
+    if (_usePhoneNumber) {
+      final cleanPhone = _phoneController.text.replaceAll(' ', '').trim();
+      final fullPhone = '+251$cleanPhone';
+
+      final match = await FirebaseFirestore.instance
+          .collection('users')
+          .where('phone', isEqualTo: fullPhone)
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+
+      if (match.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No account found for this phone. Please register or use email.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      email = (match.docs.first.data()['email'] as String?)?.trim() ?? '';
+      if (email.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This phone is linked to an account without email. Use email login.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent. Check your inbox.'),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reset failed: ${e.message ?? e.code}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Reset failed. Please try again.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     }
   }
@@ -359,11 +493,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Password reset feature coming soon')),
-          );
-        },
+        onPressed: _handleForgotPassword,
         child: Text(
           'Forgot Password?',
           style: theme.textTheme.bodySmall?.copyWith(

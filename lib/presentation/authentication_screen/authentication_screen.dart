@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -56,6 +57,35 @@ class _AuthenticationScreenState extends State<AuthenticationScreen>
     } else {
       Navigator.pushReplacementNamed(context, '/service-categories-screen');
     }
+  }
+
+  Future<void> _upsertUserProfile(
+    User user, {
+    String? fallbackRole,
+    String? phone,
+    String? serviceCategory,
+  }) async {
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final snapshot = await docRef.get();
+    final existingData = snapshot.data() ?? {};
+    final role =
+        (existingData['role'] as String?) ?? fallbackRole ?? 'customer';
+
+    final data = <String, dynamic>{
+      'name': user.displayName ?? existingData['name'] ?? '',
+      'email': user.email ?? existingData['email'] ?? '',
+      'photoUrl': user.photoURL ?? existingData['photoUrl'],
+      'phone': phone ?? existingData['phone'] ?? user.phoneNumber,
+      'serviceCategory': serviceCategory ?? existingData['serviceCategory'],
+      'role': role,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (!snapshot.exists || !existingData.containsKey('createdAt')) {
+      data['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    await docRef.set(data, SetOptions(merge: true));
   }
 
   void _setLoading(bool loading) {
@@ -241,6 +271,10 @@ class _AuthenticationScreenState extends State<AuthenticationScreen>
         );
 
         await FirebaseAuth.instance.signInWithCredential(credential);
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await _upsertUserProfile(user, fallbackRole: 'customer');
+        }
       } else if (provider == 'Facebook') {
         final LoginResult result = await FacebookAuth.instance.login(
           permissions: ['email'],
@@ -268,6 +302,10 @@ class _AuthenticationScreenState extends State<AuthenticationScreen>
         );
 
         await FirebaseAuth.instance.signInWithCredential(credential);
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await _upsertUserProfile(user, fallbackRole: 'customer');
+        }
       } else {
         // Fallback for any future providers
         await Future.delayed(const Duration(seconds: 1));

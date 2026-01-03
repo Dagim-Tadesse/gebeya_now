@@ -6,12 +6,14 @@ class CustomBottomBarItem {
   final IconData? activeIcon;
   final String label;
   final String route;
+  final Object? arguments;
 
   const CustomBottomBarItem({
     required this.icon,
     this.activeIcon,
     required this.label,
     required this.route,
+    this.arguments,
   });
 }
 
@@ -41,18 +43,20 @@ class CustomBottomBar extends StatelessWidget {
       activeIcon: Icons.search,
       label: 'Search',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 1},
     ),
     CustomBottomBarItem(
       icon: Icons.favorite_outline,
       activeIcon: Icons.favorite,
       label: 'Favorites',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 2},
     ),
     CustomBottomBarItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person,
       label: 'Profile',
-      route: '/authentication-screen',
+      route: '/profile-screen',
     ),
   ];
 
@@ -97,14 +101,21 @@ class CustomBottomBar extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = currentIndex == index;
+    final currentRouteName = ModalRoute.of(context)?.settings.name;
+    final shouldNavigate =
+        currentRouteName == null || item.route != currentRouteName;
 
     return Expanded(
       child: InkWell(
         onTap: () {
           onTap(index);
-          // Navigate to the corresponding route
-          if (!isSelected) {
-            Navigator.pushReplacementNamed(context, item.route);
+          // Navigate only if it's a different route.
+          if (!isSelected && shouldNavigate) {
+            Navigator.pushReplacementNamed(
+              context,
+              item.route,
+              arguments: item.arguments,
+            );
           }
         },
         splashColor: colorScheme.primary.withValues(alpha: 0.1),
@@ -172,12 +183,14 @@ class CustomBottomBarMaterial3 extends StatelessWidget {
       activeIcon: Icons.search,
       label: 'Search',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 1},
     ),
     CustomBottomBarItem(
       icon: Icons.favorite_outline,
       activeIcon: Icons.favorite,
       label: 'Favorites',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 2},
     ),
     CustomBottomBarItem(
       icon: Icons.person_outline,
@@ -189,15 +202,19 @@ class CustomBottomBarMaterial3 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentRouteName = ModalRoute.of(context)?.settings.name;
     return NavigationBar(
       selectedIndex: currentIndex,
       onDestinationSelected: (index) {
         onTap(index);
-        // Navigate to the corresponding route
-        if (currentIndex != index) {
+        final item = _navigationItems[index];
+        final shouldNavigate =
+            currentRouteName == null || item.route != currentRouteName;
+        if (currentIndex != index && shouldNavigate) {
           Navigator.pushReplacementNamed(
             context,
-            _navigationItems[index].route,
+            item.route,
+            arguments: item.arguments,
           );
         }
       },
@@ -238,12 +255,14 @@ class CustomBottomBarCompact extends StatelessWidget {
       activeIcon: Icons.search,
       label: 'Search',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 1},
     ),
     CustomBottomBarItem(
       icon: Icons.favorite_outline,
       activeIcon: Icons.favorite,
       label: 'Favorites',
       route: '/provider-list-screen',
+      arguments: {'initialTabIndex': 2},
     ),
     CustomBottomBarItem(
       icon: Icons.person_outline,
@@ -294,13 +313,20 @@ class CustomBottomBarCompact extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = currentIndex == index;
+    final currentRouteName = ModalRoute.of(context)?.settings.name;
+    final shouldNavigate =
+        currentRouteName == null || item.route != currentRouteName;
 
     return Expanded(
       child: InkWell(
         onTap: () {
           onTap(index);
-          if (!isSelected) {
-            Navigator.pushReplacementNamed(context, item.route);
+          if (!isSelected && shouldNavigate) {
+            Navigator.pushReplacementNamed(
+              context,
+              item.route,
+              arguments: item.arguments,
+            );
           }
         },
         splashColor: colorScheme.primary.withValues(alpha: 0.1),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
 
@@ -33,7 +35,7 @@ class _ProviderRegistrationScreenState
   // State Variables
   String? _profileImagePath;
   String? _selectedCategory;
-  List<String> _selectedSpecializations = [];
+  final List<String> _selectedSpecializations = [];
   double _yearsOfExperience = 0;
   double _serviceRadius = 5;
   bool _isLocationDetected = false;
@@ -41,7 +43,7 @@ class _ProviderRegistrationScreenState
   final int _totalSteps = 3;
 
   // Working Hours State
-  Map<String, bool> _workingDays = {
+  final Map<String, bool> _workingDays = {
     'Monday': true,
     'Tuesday': true,
     'Wednesday': true,
@@ -51,7 +53,7 @@ class _ProviderRegistrationScreenState
     'Sunday': false,
   };
 
-  Map<String, TimeOfDay> _startTimes = {
+  final Map<String, TimeOfDay> _startTimes = {
     'Monday': const TimeOfDay(hour: 9, minute: 0),
     'Tuesday': const TimeOfDay(hour: 9, minute: 0),
     'Wednesday': const TimeOfDay(hour: 9, minute: 0),
@@ -61,7 +63,7 @@ class _ProviderRegistrationScreenState
     'Sunday': const TimeOfDay(hour: 9, minute: 0),
   };
 
-  Map<String, TimeOfDay> _endTimes = {
+  final Map<String, TimeOfDay> _endTimes = {
     'Monday': const TimeOfDay(hour: 17, minute: 0),
     'Tuesday': const TimeOfDay(hour: 17, minute: 0),
     'Wednesday': const TimeOfDay(hour: 17, minute: 0),
@@ -72,6 +74,12 @@ class _ProviderRegistrationScreenState
   };
 
   bool _hasUnsavedChanges = false;
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final hh = time.hour.toString().padLeft(2, '0');
+    final mm = time.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
 
   @override
   void initState() {
@@ -237,8 +245,69 @@ class _ProviderRegistrationScreenState
     }
   }
 
-  void _submitRegistration() {
-    if (_isStep3Valid) {
+  Future<void> _submitRegistration() async {
+    if (!_isStep3Valid) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to continue')),
+      );
+      return;
+    }
+
+    final theme = Theme.of(context);
+    try {
+      final workingSchedule = <String, dynamic>{};
+      for (final day in _workingDays.keys) {
+        final enabled = _workingDays[day] ?? false;
+        workingSchedule[day] = {
+          'enabled': enabled,
+          'start': _formatTimeOfDay(
+            _startTimes[day] ?? const TimeOfDay(hour: 9, minute: 0),
+          ),
+          'end': _formatTimeOfDay(
+            _endTimes[day] ?? const TimeOfDay(hour: 17, minute: 0),
+          ),
+        };
+      }
+
+      final applicationRef = FirebaseFirestore.instance
+          .collection('provider_applications')
+          .doc(user.uid);
+
+      await applicationRef.set({
+        'uid': user.uid,
+        'email': user.email,
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'selectedCategory': _selectedCategory,
+        'specializations': List<String>.from(_selectedSpecializations),
+        'yearsOfExperience': _yearsOfExperience,
+        'serviceRadiusKm': _serviceRadius,
+        'address': _addressController.text.trim(),
+        'district': _districtController.text.trim(),
+        'hourlyRate': _hourlyRateController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        // NOTE: This is a local device path; for real apps upload to Storage and store a download URL.
+        'profileImagePath': _profileImagePath,
+        'workingSchedule': workingSchedule,
+        'status': 'pending',
+        'submittedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'role': 'customer',
+        'providerApplicationStatus': 'pending',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      setState(() => _hasUnsavedChanges = false);
+
       // Show success dialog
       showDialog(
         context: context,
@@ -249,7 +318,7 @@ class _ProviderRegistrationScreenState
               CustomIconWidget(
                 iconName: 'check_circle',
                 size: 8.w,
-                color: Theme.of(context).colorScheme.primary,
+                color: theme.colorScheme.primary,
               ),
               SizedBox(width: 3.w),
               const Text('Registration Submitted'),
@@ -272,6 +341,11 @@ class _ProviderRegistrationScreenState
           ],
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to submit: $e')));
     }
   }
 

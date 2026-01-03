@@ -5,15 +5,19 @@ import '../../../core/app_export.dart';
 import '../../../widgets/custom_icon_widget.dart';
 
 class FilterBottomSheetWidget extends StatefulWidget {
+  final List<String> categories;
+  final String categoryFilter;
   final double locationRadius;
   final String availabilityFilter;
   final double ratingThreshold;
   final RangeValues priceRange;
-  final Function(double, String, double, RangeValues) onApply;
+  final Function(String, double, String, double, RangeValues) onApply;
   final VoidCallback onReset;
 
   const FilterBottomSheetWidget({
     super.key,
+    required this.categories,
+    required this.categoryFilter,
     required this.locationRadius,
     required this.availabilityFilter,
     required this.ratingThreshold,
@@ -28,6 +32,7 @@ class FilterBottomSheetWidget extends StatefulWidget {
 }
 
 class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
+  late String _categoryFilter;
   late double _locationRadius;
   late String _availabilityFilter;
   late double _ratingThreshold;
@@ -36,6 +41,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
   @override
   void initState() {
     super.initState();
+    _categoryFilter = widget.categoryFilter;
     _locationRadius = widget.locationRadius;
     _availabilityFilter = widget.availabilityFilter;
     _ratingThreshold = widget.ratingThreshold;
@@ -90,6 +96,45 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                 ),
               ),
               Divider(color: theme.colorScheme.outline),
+              SizedBox(height: 2.h),
+
+              // Category
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Category', style: theme.textTheme.titleMedium),
+                    SizedBox(height: 1.h),
+                    Wrap(
+                      spacing: 2.w,
+                      runSpacing: 1.h,
+                      children: widget.categories.map((category) {
+                        final isSelected = _categoryFilter == category;
+                        return FilterChip(
+                          label: Text(category),
+                          selected: isSelected,
+                          onSelected: (_) {
+                            setState(() => _categoryFilter = category);
+                          },
+                          backgroundColor: theme.colorScheme.surface,
+                          selectedColor: theme.colorScheme.primaryContainer,
+                          labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                            color: isSelected
+                                ? theme.colorScheme.onPrimaryContainer
+                                : theme.colorScheme.onSurface,
+                          ),
+                          side: BorderSide(
+                            color: isSelected
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outline,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
               SizedBox(height: 2.h),
 
               // Location radius
@@ -287,6 +332,7 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                       child: ElevatedButton(
                         onPressed: () {
                           widget.onApply(
+                            _categoryFilter,
                             _locationRadius,
                             _availabilityFilter,
                             _ratingThreshold,

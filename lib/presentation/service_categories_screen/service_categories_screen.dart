@@ -24,9 +24,21 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
   bool _isGridView = true;
   // ignore: unused_field
   bool _isRefreshing = false;
+  String _currentCity = 'Addis Ababa';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   late TabController _tabController;
+
+  static const List<String> _cities = <String>[
+    'Addis Ababa',
+    'Adama',
+    'Bahir Dar',
+    'Hawassa',
+    'Mekelle',
+    'Dire Dawa',
+    'Gondar',
+    'Jimma',
+  ];
 
   // Mock data for service categories with Ethiopian context
   final List<Map<String, dynamic>> _serviceCategories = [
@@ -55,7 +67,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
       "name": "Tailoring",
       "nameAmharic": "የልብስ ስፌት",
       "icon": "checkroom",
-      "providerCount": 52,
+      "providerCount": 31,
       "isEmergency": false,
       "isFeatured": true,
       "description": "Custom tailoring and clothing alterations",
@@ -65,7 +77,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
       "name": "Tutoring",
       "nameAmharic": "የግል ትምህርት",
       "icon": "school",
-      "providerCount": 67,
+      "providerCount": 41,
       "isEmergency": false,
       "isFeatured": false,
       "description": "Academic tutoring for all subjects and levels",
@@ -75,7 +87,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
       "name": "Cleaning",
       "nameAmharic": "የጽዳት አገልግሎት",
       "icon": "cleaning_services",
-      "providerCount": 41,
+      "providerCount": 30,
       "isEmergency": false,
       "isFeatured": false,
       "description": "Professional cleaning services for homes and offices",
@@ -198,11 +210,74 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
     setState(() => _isGridView = !_isGridView);
   }
 
+  void _showLocationPicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final theme = Theme.of(context);
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(4.w, 2.h, 4.w, 1.h),
+                child: Text(
+                  'Select City',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _cities.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: theme.colorScheme.outline),
+                  itemBuilder: (context, index) {
+                    final city = _cities[index];
+                    final isSelected = city == _currentCity;
+
+                    return ListTile(
+                      title: Text(city, style: theme.textTheme.bodyLarge),
+                      trailing: isSelected
+                          ? Icon(Icons.check, color: theme.colorScheme.primary)
+                          : null,
+                      onTap: () {
+                        setState(() => _currentCity = city);
+                        Navigator.pop(context);
+
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                            content: Text('Location set to $city'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 1.h),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _handleCategoryTap(Map<String, dynamic> category) {
     Navigator.pushNamed(
       context,
       '/provider-list-screen',
       arguments: {
+        'initialTabIndex': 1,
+        'initialCategory': category['name'],
         'categoryId': category['id'],
         'categoryName': category['name'],
       },
@@ -372,15 +447,33 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
               // Location header
               SliverToBoxAdapter(
                 child: LocationHeaderWidget(
-                  currentCity: 'Addis Ababa',
-                  onLocationTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Location selection coming soon'),
-                        duration: Duration(seconds: 2),
+                  currentCity: _currentCity,
+                  onLocationTap: _showLocationPicker,
+                ),
+              ),
+
+              // Home-style header (objective)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(4.w, 2.h, 4.w, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Find local service providers fast',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    );
-                  },
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Browse services or search providers in $_currentCity.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -408,7 +501,7 @@ class _ServiceCategoriesScreenState extends State<ServiceCategoriesScreen>
                             },
                             style: theme.textTheme.bodyMedium,
                             decoration: InputDecoration(
-                              hintText: 'Search categories...',
+                              hintText: 'Search services...',
                               hintStyle: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),

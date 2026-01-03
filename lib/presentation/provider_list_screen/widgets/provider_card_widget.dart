@@ -24,9 +24,11 @@ class ProviderCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isFeatured = provider["isFeatured"] as bool;
-    final isEmergency = provider["isEmergency"] as bool;
-    final availability = provider["availability"] as String;
+    final isFeatured = (provider["isFeatured"] as bool?) ?? false;
+    final isEmergency = (provider["isEmergency"] as bool?) ?? false;
+    final availability = (provider["availability"] as String?) ?? 'Offline';
+    final avatarUrl = (provider["avatar"] as String?)?.trim();
+    final semanticLabel = (provider["semanticLabel"] as String?)?.trim();
 
     return GestureDetector(
       onTap: onTap,
@@ -102,12 +104,18 @@ class ProviderCardWidget extends StatelessWidget {
                             ),
                             child: ClipOval(
                               child: CustomImageWidget(
-                                imageUrl: provider["avatar"] as String,
+                                imageUrl:
+                                    (avatarUrl == null || avatarUrl.isEmpty)
+                                    ? null
+                                    : avatarUrl,
                                 width: 20.w,
                                 height: 20.w,
                                 fit: BoxFit.cover,
                                 semanticLabel:
-                                    provider["semanticLabel"] as String,
+                                    (semanticLabel == null ||
+                                        semanticLabel.isEmpty)
+                                    ? null
+                                    : semanticLabel,
                               ),
                             ),
                           ),
@@ -144,7 +152,8 @@ class ProviderCardWidget extends StatelessWidget {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    provider["name"] as String,
+                                    (provider["name"] as String?) ??
+                                        'Unknown Provider',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w600),
                                     maxLines: 1,
@@ -169,7 +178,8 @@ class ProviderCardWidget extends StatelessWidget {
                             ),
                             SizedBox(height: 0.5.h),
                             Text(
-                              provider["specialization"] as String,
+                              (provider["specialization"] as String?) ??
+                                  'General Services',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -187,13 +197,14 @@ class ProviderCardWidget extends StatelessWidget {
                                 SizedBox(width: 1.w),
                                 Text(
                                   '${provider["rating"]}',
+                                  // Rating stored as num; default to 0.0 if missing.
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 SizedBox(width: 1.w),
                                 Text(
-                                  '(${provider["reviewCount"]})',
+                                  '(${provider["reviewCount"] ?? 0})',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
@@ -218,7 +229,8 @@ class ProviderCardWidget extends StatelessWidget {
                       SizedBox(width: 1.w),
                       Expanded(
                         child: Text(
-                          provider["location"] as String,
+                          (provider["location"] as String?) ??
+                              'Location not specified',
                           style: theme.textTheme.bodySmall,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -235,6 +247,7 @@ class ProviderCardWidget extends StatelessWidget {
                         ),
                         child: Text(
                           '${provider["distance"]} km',
+                          // Distance stored as num; default to 0 if missing.
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.w600,

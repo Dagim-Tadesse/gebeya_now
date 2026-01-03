@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -155,6 +156,22 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           .createUserWithEmailAndPassword(email: email, password: password);
 
       await credential.user?.updateDisplayName(_nameController.text.trim());
+      final phone = '+251${_phoneController.text.trim()}';
+      final role = _isProvider ? 'provider' : 'customer';
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'name': _nameController.text.trim(),
+          'email': email,
+          'phone': phone,
+          'serviceCategory': _isProvider ? _selectedCategory : null,
+          'photoUrl': user.photoURL,
+          'role': role,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
 
       HapticFeedback.mediumImpact();
       widget.onRegisterSuccess(_isProvider);

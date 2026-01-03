@@ -5,6 +5,7 @@ import '../presentation/provider_registration_screen/provider_registration_scree
 import '../presentation/authentication_screen/authentication_screen.dart';
 import '../presentation/service_categories_screen/service_categories_screen.dart';
 import '../presentation/provider_detail_screen/provider_detail_screen.dart';
+import '../presentation/profile_screen/profile_screen.dart';
 
 class AppRoutes {
   // TODO: Add your routes here
@@ -15,6 +16,7 @@ class AppRoutes {
   static const String authentication = '/authentication-screen';
   static const String serviceCategories = '/service-categories-screen';
   static const String providerDetail = '/provider-detail-screen';
+  static const String profile = '/profile-screen';
 
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
@@ -24,6 +26,7 @@ class AppRoutes {
     authentication: (context) => const AuthenticationScreen(),
     serviceCategories: (context) => const ServiceCategoriesScreen(),
     providerDetail: (context) => const ProviderDetailScreen(),
+    profile: (context) => const ProfileScreen(),
     // TODO: Add your other routes here
   };
 }
